@@ -40,12 +40,17 @@ return [
     | Internal service-to-service auth (API Gateway → this microservice)
     |--------------------------------------------------------------------------
     |
-    | Shared secret expected in the X-Internal-Api-Key header. Only callers
-    | that know this key (typically the main API Gateway) may hit /api/*.
+    | api_key: shared secret in X-Internal-Api-Key (always required).
+    | allowed_ips: optional comma-separated IPs/CIDRs. Empty = disabled.
+    | Useful when the Gateway runs on another machine with a stable egress IP.
     |
     */
     'internal' => [
         'api_key' => env('INTERNAL_API_KEY'),
+        'allowed_ips' => array_values(array_filter(array_map(
+            trim(...),
+            explode(',', (string) env('ALLOWED_IPS', ''))
+        ))),
     ],
 
 ];
