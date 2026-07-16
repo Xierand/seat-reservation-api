@@ -35,4 +35,18 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Internal service-to-service auth (API Gateway → this microservice)
+    |--------------------------------------------------------------------------
+    |
+    | Shared secret expected in the X-Internal-Api-Key header. Only callers
+    | that know this key (typically the main API Gateway) may hit /api/*.
+    |
+    */
+    'internal' => [
+        'api_key' => env('INTERNAL_API_KEY'),
+    ],
+
 ];
+
