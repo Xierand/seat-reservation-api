@@ -7,6 +7,7 @@ use App\Enums\EventStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'name',
@@ -28,5 +29,10 @@ class Event extends Model
             'active_since' => 'datetime',
             'event_date' => 'datetime',
         ];
+    }
+
+    public function sectors(): HasMany
+    {
+        return $this->hasMany(Sector::class);
     }
 }
