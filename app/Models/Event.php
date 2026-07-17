@@ -35,4 +35,9 @@ class Event extends Model
     {
         return $this->hasMany(Sector::class);
     }
+
+    public function seats(): HasMany
+    {
+        return $this->hasMany(Seat::class);
+    }
 }
