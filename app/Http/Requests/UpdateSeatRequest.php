@@ -6,6 +6,7 @@ use App\Enums\SeatStatus;
 use App\Enums\SectorType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateSeatRequest extends FormRequest
 {
@@ -22,6 +23,29 @@ class UpdateSeatRequest extends FormRequest
             'status' => ['sometimes', Rule::enum(SeatStatus::class)],
             'base_price' => ['sometimes', 'numeric', 'min:0'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $sector = $this->route('sector');
+
+            if (! in_array($sector->type, [SectorType::SEATED, SectorType::MIXED], true)) {
+                return;
+            }
+
+            if (! $this->hasAny(['row', 'number'])) {
+                return;
+            }
+
+            if (! $this->filled('row')) {
+                $validator->errors()->add('row', 'Row is required for seated and mixed sectors.');
+            }
+
+            if (! $this->filled('number')) {
+                $validator->errors()->add('number', 'Number is required for seated and mixed sectors.');
+            }
+        });
     }
 
     protected function prepareForValidation(): void

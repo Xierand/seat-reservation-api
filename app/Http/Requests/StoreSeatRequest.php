@@ -30,16 +30,16 @@ class StoreSeatRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $sector = $this->route('sector');
 
-            if ($sector->type !== SectorType::SEATED) {
+            if (! in_array($sector->type, [SectorType::SEATED, SectorType::MIXED], true)) {
                 return;
             }
 
             if (! $this->filled('row')) {
-                $validator->errors()->add('row', 'Row is required for seated sectors.');
+                $validator->errors()->add('row', 'Row is required for seated and mixed sectors.');
             }
 
             if (! $this->filled('number')) {
-                $validator->errors()->add('number', 'Number is required for seated sectors.');
+                $validator->errors()->add('number', 'Number is required for seated and mixed sectors.');
             }
         });
     }
