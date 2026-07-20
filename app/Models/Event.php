@@ -40,4 +40,9 @@ class Event extends Model
     {
         return $this->hasMany(Seat::class);
     }
+
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
 }
