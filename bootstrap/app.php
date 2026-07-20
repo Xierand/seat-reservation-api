@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\SeatsNotAvailableException;
 use App\Http\Middleware\RestrictToAllowedIps;
 use App\Http\Middleware\VerifyInternalApiKey;
 use Illuminate\Foundation\Application;
@@ -29,5 +30,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => 'Endpoint not found.',
                 'path' => $request->path(),
             ], 404);
+        });
+        $exceptions->render(function (SeatsNotAvailableException $e, Request $request) {
+            return response()->json([
+                'error' => 'seats_not_available',
+                'message' => $e->getMessage(),
+            ], 409);
         });
     })->create();
