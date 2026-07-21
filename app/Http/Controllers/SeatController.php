@@ -63,18 +63,26 @@ class SeatController extends Controller
 
     private function throwIfDuplicateSeat(QueryException $e): void
     {
-        $message = strtolower($e->getMessage());
-
-        $isDuplicate = str_contains($message, 'uq_sector_row_number')
-            || str_contains($message, 'duplicate entry')
-            || str_contains($message, 'unique constraint failed');
-
-        if (! $isDuplicate) {
+        if (! $this->isDuplicateSeatError($e)) {
             return;
         }
 
         throw ValidationException::withMessages([
             'row' => 'A seat with this row and number already exists in this sector.',
         ]);
+    }
+
+    private function isDuplicateSeatError(QueryException $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        if (str_contains($message, 'uq_sector_row_number')
+            || str_contains($message, 'duplicate key value')
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'unique constraint')) {
+            return true;
+        }
+
+        return $e->getCode() === '23505';
     }
 }
