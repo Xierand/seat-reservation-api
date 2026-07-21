@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\EventStatus;
+use App\Http\Requests\AttachPaymentProviderRequest;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Event;
+use App\Models\Order;
+use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
@@ -39,5 +42,28 @@ class OrderController extends Controller
         return (new OrderResource($order))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function attachPaymentProvider(
+        AttachPaymentProviderRequest $request,
+        Event $event,
+        Order $order,
+        OrderPaymentService $paymentService,
+    ): OrderResource {
+        $order = $paymentService->attachPaymentProvider(
+            $order,
+            $request->validated('payment_provider_id'),
+        );
+
+        return new OrderResource($order);
+    }
+
+    public function confirmPayment(
+        string $paymentProviderId,
+        OrderPaymentService $paymentService,
+    ): OrderResource {
+        $order = $paymentService->confirmPayment($paymentProviderId);
+
+        return new OrderResource($order);
     }
 }
