@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\OrderStatus;
 use App\Enums\SeatStatus;
+use App\Exceptions\InvalidOrderStatusTransitionException;
 use App\Exceptions\OrderPaymentNotAllowedException;
 use App\Models\Order;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -12,6 +13,10 @@ use Illuminate\Support\Str;
 
 class OrderPaymentService
 {
+    public function __construct(
+        private readonly OrderStateMachine $stateMachine,
+    ) {}
+
     public function attachPaymentProvider(Order $order, string $paymentProviderId): Order
     {
         if ($order->status !== OrderStatus::PENDING) {
@@ -57,12 +62,6 @@ class OrderPaymentService
             return $order->load('reservations');
         }
 
-        if ($order->status !== OrderStatus::PENDING) {
-            throw new OrderPaymentNotAllowedException(
-                "Cannot confirm payment for order with status '{$order->status->value}'.",
-            );
-        }
-
         if ($order->valid_until->isPast()) {
             throw new OrderPaymentNotAllowedException(
                 'Cannot confirm payment for an expired order.',
@@ -72,7 +71,11 @@ class OrderPaymentService
         return DB::transaction(function () use ($order) {
             $order->load('reservations.seat');
 
-            $order->update(['status' => OrderStatus::PAID]);
+            try {
+                $this->stateMachine->transition($order, OrderStatus::PAID);
+            } catch (InvalidOrderStatusTransitionException $e) {
+                throw new OrderPaymentNotAllowedException($e->getMessage(), previous: $e);
+            }
 
             foreach ($order->reservations as $reservation) {
                 $reservation->update(['ticket_number' => (string) Str::uuid()]);

@@ -11,6 +11,10 @@ use Throwable;
 
 class OrderExpirationService
 {
+    public function __construct(
+        private readonly OrderStateMachine $stateMachine,
+    ) {}
+
     public function expire(): int
     {
         $orders = Order::query()
@@ -40,7 +44,7 @@ class OrderExpirationService
         DB::transaction(function () use ($order) {
             $order->load('reservations.seat');
 
-            $order->update(['status' => OrderStatus::EXPIRED]);
+            $this->stateMachine->transition($order, OrderStatus::EXPIRED);
 
             foreach ($order->reservations as $reservation) {
                 $reservation->seat->update(['status' => SeatStatus::FREE]);

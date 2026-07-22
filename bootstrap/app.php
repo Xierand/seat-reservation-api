@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\InvalidOrderStatusTransitionException;
 use App\Exceptions\OrderPaymentNotAllowedException;
 use App\Exceptions\SeatsNotAvailableException;
 use App\Http\Middleware\RestrictToAllowedIps;
@@ -42,6 +43,14 @@ return Application::configure(basePath: dirname(__DIR__))
             return response()->json([
                 'error' => 'order_payment_not_allowed',
                 'message' => $e->getMessage(),
+            ], 409);
+        });
+        $exceptions->render(function (InvalidOrderStatusTransitionException $e, Request $request) {
+            return response()->json([
+                'error' => 'invalid_order_status_transition',
+                'message' => $e->getMessage(),
+                'from' => $e->from->value,
+                'to' => $e->to->value,
             ], 409);
         });
     })->create();
