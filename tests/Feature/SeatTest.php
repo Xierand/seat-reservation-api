@@ -2,6 +2,8 @@
 
 use App\Enums\SectorType;
 use App\Models\Event;
+use App\Models\Order;
+use App\Models\Reservation;
 use App\Models\Seat;
 use App\Models\Sector;
 
@@ -50,11 +52,11 @@ test('it rejects duplicate row and number after update', function () {
 
     $seatId = $secondSeat->json('data.id');
 
-     $this->patchJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats/{$seatId}", [
+    $this->patchJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats/{$seatId}", [
         'row' => 'A',
         'number' => '1',
     ])->assertUnprocessable()
-         ->assertJsonValidationErrors(['row']);
+        ->assertJsonValidationErrors(['row']);
 });
 
 test('it requires row and number for seated and mixed sectors', function () {
@@ -81,8 +83,8 @@ test('it requires row and number for seated and mixed sectors', function () {
         ->assertJsonValidationErrors(['number']);
 
     $this->postJson("/api/v1/events/{$event->id}/sectors/{$sectorMixed->id}/seats", [
-       'base_price' => 100,
-       'number' => '1',
+        'base_price' => 100,
+        'number' => '1',
     ])->assertUnprocessable()
         ->assertJsonValidationErrors(['row']);
 
@@ -94,7 +96,6 @@ test('it requires row and number for seated and mixed sectors', function () {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['base_price']);
 });
-
 
 test('it rejects clearing row or number on seated and mixed seat update', function () {
     $event = Event::factory()->create();
@@ -114,7 +115,7 @@ test('it rejects clearing row or number on seated and mixed seat update', functi
     $seatId = $seat->json('data.id');
 
     $this->patchJson("/api/v1/events/{$event->id}/sectors/{$sectorSeated->id}/seats/{$seatId}", [
-        'row' => NULL
+        'row' => null,
     ])->assertUnprocessable()
         ->assertJsonValidationErrors(['row']);
 
@@ -134,7 +135,7 @@ test('it strips row and number when creating or updating a standing-sector seat'
     $seat = $this->postJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats", [
         'row' => 'A',
         'number' => '1',
-        'base_price' => 50
+        'base_price' => 50,
     ]);
 
     $seat->assertCreated();
@@ -143,8 +144,8 @@ test('it strips row and number when creating or updating a standing-sector seat'
 
     $this->assertDatabaseHas('seats', [
         'id' => $seatId,
-        'row' => NULL,
-        'number' => NULL,
+        'row' => null,
+        'number' => null,
         'base_price' => 50,
     ]);
 
@@ -155,8 +156,8 @@ test('it strips row and number when creating or updating a standing-sector seat'
 
     $this->assertDatabaseHas('seats', [
         'id' => $seatId,
-        'row' => NULL,
-        'number' => NULL,
+        'row' => null,
+        'number' => null,
     ]);
 });
 
@@ -196,14 +197,14 @@ test('it returns 404 when accessing a seat through the wrong event/sector', func
         'number' => '1',
         'base_price' => '100',
         'event_id' => $event->id,
-        'sector_id' => $sector->id
+        'sector_id' => $sector->id,
     ]);
 });
 
 test('it deletes seats when a sector is deleted', function () {
     $event = Event::factory()->create();
     $sector = Sector::factory()->create([
-        'event_id' => $event->id
+        'event_id' => $event->id,
     ]);
 
     Seat::factory()->count(3)->create([
@@ -215,4 +216,45 @@ test('it deletes seats when a sector is deleted', function () {
         ->assertNoContent();
 
     $this->assertDatabaseCount('seats', 0);
+});
+
+test('it deletes a seat without reservations', function () {
+    $event = Event::factory()->create();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::SEATED,
+    ]);
+    $seat = Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+    ]);
+
+    $this->deleteJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats/{$seat->id}")
+        ->assertNoContent();
+
+    $this->assertDatabaseMissing('seats', ['id' => $seat->id]);
+});
+
+test('it rejects deleting a seat with existing reservations', function () {
+    $event = Event::factory()->create();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::SEATED,
+    ]);
+    $seat = Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+    ]);
+    $order = Order::factory()->create(['event_id' => $event->id]);
+    Reservation::factory()->create([
+        'order_id' => $order->id,
+        'seat_id' => $seat->id,
+    ]);
+
+    $this->deleteJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats/{$seat->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('error', 'seat_has_reservations')
+        ->assertJsonPath('message', 'Cannot delete seat with existing reservations.');
+
+    $this->assertDatabaseHas('seats', ['id' => $seat->id]);
 });

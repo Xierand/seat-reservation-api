@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Event;
+use App\Models\Order;
+use App\Models\Reservation;
 
 test('it creates an event', function () {
     $response = $this->postJson('/api/v1/events', [
@@ -160,4 +162,20 @@ test('it deletes an event', function () {
 
     $this->assertDatabaseMissing('events', ['id' => $event->id]);
     $this->getJson("/api/v1/events/{$event->id}")->assertNotFound();
+});
+
+test('it rejects deleting an event with existing reservations', function () {
+    $event = Event::factory()->create();
+    $order = Order::factory()->create(['event_id' => $event->id]);
+    Reservation::factory()->create(['order_id' => $order->id]);
+
+    $this->deleteJson("/api/v1/events/{$event->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('error', 'event_has_reservations')
+        ->assertJsonPath(
+            'message',
+            'Cannot delete event with existing reservations. Set status to cancelled instead.',
+        );
+
+    $this->assertDatabaseHas('events', ['id' => $event->id]);
 });
