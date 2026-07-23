@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\EventStatus;
 use App\Http\Requests\AttachPaymentProviderRequest;
+use App\Http\Requests\IndexOrderRequest;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Event;
@@ -12,9 +13,21 @@ use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class OrderController extends Controller
 {
+    public function index(IndexOrderRequest $request, Event $event): AnonymousResourceCollection
+    {
+        $orders = $event->orders()
+            ->where('user_id', $request->validated('user_id'))
+            ->with('reservations')
+            ->latest('id')
+            ->paginate();
+
+        return OrderResource::collection($orders);
+    }
+
     public function store(
         StoreOrderRequest $request,
         Event $event,
@@ -42,6 +55,11 @@ class OrderController extends Controller
         return (new OrderResource($order))
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function show(Event $event, Order $order): OrderResource
+    {
+        return new OrderResource($order->load('reservations'));
     }
 
     public function attachPaymentProvider(

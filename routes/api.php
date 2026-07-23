@@ -14,7 +14,7 @@ Route::prefix('v1')->group(function () {
         ->scopeBindings();
     Route::apiResource('events.sectors.seats', SeatController::class)->scoped();
 
-    Route::apiResource('events.orders', OrderController::class)->only(['store'])->scoped();
+    Route::apiResource('events.orders', OrderController::class)->only(['index', 'store', 'show'])->scoped();
     Route::patch('events/{event}/orders/{order}/payment-provider', [OrderController::class, 'attachPaymentProvider'])
         ->scopeBindings();
     Route::post('orders/{paymentProviderId}/confirm-payment', [OrderController::class, 'confirmPayment']);
