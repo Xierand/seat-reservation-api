@@ -32,14 +32,16 @@ class SeatGenerationService
      */
     public function generate(Event $event, Sector $sector, array $data): Collection
     {
+        $this->assertEventMatchesSector($event, $sector);
+
         if (isset($data['capacity'])) {
-            return $this->generateStanding($event, $sector, (int) $data['capacity'], $data['base_price']);
+            return $this->generateStanding($sector, (int) $data['capacity'], $data['base_price']);
         }
 
-        return $this->generateGrid($event, $sector, $data);
+        return $this->generateGrid($sector, $data);
     }
 
-    private function generateStanding(Event $event, Sector $sector, int $capacity, float|string|int $basePrice): Collection
+    private function generateStanding(Sector $sector, int $capacity, float|string|int $basePrice): Collection
     {
         if (! in_array($sector->type, [SectorType::STANDING, SectorType::MIXED], true)) {
             throw new InvalidArgumentException('Standing generation is only allowed for standing and mixed sectors.');
@@ -54,7 +56,7 @@ class SeatGenerationService
 
         for ($i = 0; $i < $capacity; $i++) {
             $rows[] = [
-                'event_id' => $event->id,
+                'event_id' => $sector->event_id,
                 'sector_id' => $sector->id,
                 'row' => null,
                 'number' => null,
@@ -69,13 +71,14 @@ class SeatGenerationService
     }
 
     /**
-     * array{
-     *     base_price: float,
+     * @param  array{
+     *     base_price: float|string|int,
      *     row: array{prefix?: string|null, name?: string|null, suffix?: string|null, count: int},
      *     number: array{prefix?: string|null, name?: string|null, suffix?: string|null, count: int}
-     * }
+     * }  $data
+     * @return Collection<int, Seat>
      */
-    private function generateGrid(Event $event, Sector $sector, array $data): Collection
+    private function generateGrid(Sector $sector, array $data): Collection
     {
         if (! in_array($sector->type, [SectorType::SEATED, SectorType::MIXED], true)) {
             throw new InvalidArgumentException('Grid generation is only allowed for seated and mixed sectors.');
@@ -109,7 +112,7 @@ class SeatGenerationService
         foreach ($rowLabels as $rowLabel) {
             foreach ($numberLabels as $numberLabel) {
                 $rows[] = [
-                    'event_id' => $event->id,
+                    'event_id' => $sector->event_id,
                     'sector_id' => $sector->id,
                     'row' => $rowLabel,
                     'number' => $numberLabel,
@@ -122,6 +125,13 @@ class SeatGenerationService
         }
 
         return $this->insertSeats($sector, $rows);
+    }
+
+    private function assertEventMatchesSector(Event $event, Sector $sector): void
+    {
+        if ($event->id !== $sector->event_id) {
+            throw new InvalidArgumentException('Sector does not belong to the given event.');
+        }
     }
 
     private function insertSeats(Sector $sector, array $rows): Collection

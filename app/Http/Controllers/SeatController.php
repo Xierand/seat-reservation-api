@@ -26,7 +26,7 @@ class SeatController extends Controller
         try {
             $seat = $sector->seats()->create([
                 ...$request->safe()->only(['row', 'number', 'status', 'base_price']),
-                'event_id' => $event->id,
+                'event_id' => $sector->event_id,
             ]);
         } catch (QueryException $e) {
             $this->throwIfDuplicateSeat($e);
