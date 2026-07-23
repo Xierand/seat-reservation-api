@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\GenerateSeatsRequest;
 use App\Http\Requests\StoreSeatRequest;
 use App\Http\Requests\UpdateSeatRequest;
 use App\Http\Resources\SeatResource;
 use App\Models\Event;
 use App\Models\Seat;
 use App\Models\Sector;
+use App\Services\SeatGenerationService;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
 class SeatController extends Controller
@@ -32,6 +35,19 @@ class SeatController extends Controller
         }
 
         return (new SeatResource($seat))
+            ->response()
+            ->setStatusCode(201);
+    }
+
+    public function generate(
+        GenerateSeatsRequest $request,
+        Event $event,
+        Sector $sector,
+        SeatGenerationService $generationService,
+    ): JsonResponse {
+        $seats = $generationService->generate($event, $sector, $request->validated());
+
+        return SeatResource::collection($seats)
             ->response()
             ->setStatusCode(201);
     }

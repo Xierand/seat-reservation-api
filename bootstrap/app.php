@@ -2,6 +2,7 @@
 
 use App\Exceptions\InvalidOrderStatusTransitionException;
 use App\Exceptions\OrderPaymentNotAllowedException;
+use App\Exceptions\SeatGenerationConflictException;
 use App\Exceptions\SeatsNotAvailableException;
 use App\Http\Middleware\RestrictToAllowedIps;
 use App\Http\Middleware\VerifyInternalApiKey;
@@ -51,6 +52,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => $e->getMessage(),
                 'from' => $e->from->value,
                 'to' => $e->to->value,
+            ], 409);
+        });
+        $exceptions->render(function (SeatGenerationConflictException $e, Request $request) {
+            return response()->json([
+                'error' => 'seat_generation_conflict',
+                'message' => $e->getMessage(),
             ], 409);
         });
     })->create();

@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::apiResource('events', EventController::class);
     Route::apiResource('events.sectors', SectorController::class)->scoped();
+    Route::post('events/{event}/sectors/{sector}/seats/generate', [SeatController::class, 'generate'])
+        ->scopeBindings();
     Route::apiResource('events.sectors.seats', SeatController::class)->scoped();
 
     Route::apiResource('events.orders', OrderController::class)->only(['store'])->scoped();
