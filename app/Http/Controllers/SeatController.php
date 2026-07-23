@@ -56,7 +56,18 @@ class SeatController extends Controller
 
     public function destroy(Event $event, Sector $sector, Seat $seat)
     {
-        $seat->delete();
+        try {
+            $seat->delete();
+        } catch (QueryException $e) {
+            if ($this->isForeignKeyRestrictError($e)) {
+                return response()->json([
+                    'error' => 'seat_has_reservations',
+                    'message' => 'Cannot delete seat with existing reservations.',
+                ], 409);
+            }
+
+            throw $e;
+        }
 
         return response()->noContent();
     }
@@ -84,5 +95,19 @@ class SeatController extends Controller
         }
 
         return $e->getCode() === '23505';
+    }
+
+    private function isForeignKeyRestrictError(QueryException $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        if (str_contains($message, 'foreign key constraint')
+            || str_contains($message, 'integrity constraint violation')
+            || str_contains($message, 'cannot delete or update a parent row')) {
+            return true;
+        }
+
+        return in_array($e->getCode(), ['23000', '23503'], true)
+            || (int) ($e->errorInfo[1] ?? 0) === 1451;
     }
 }
