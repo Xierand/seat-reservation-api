@@ -17,6 +17,8 @@ Route::prefix('v1')->group(function () {
     Route::apiResource('events.orders', OrderController::class)->only(['index', 'store', 'show'])->scoped();
     Route::patch('events/{event}/orders/{order}/payment-provider', [OrderController::class, 'attachPaymentProvider'])
         ->scopeBindings();
+    Route::post('events/{event}/orders/{order}/cancel', [OrderController::class, 'cancel'])
+        ->scopeBindings();
     Route::post('orders/{paymentProviderId}/confirm-payment', [OrderController::class, 'confirmPayment']);
     Route::get('events/{event}/users/{userId}/limit', [UserController::class, 'getLimit']);
 });

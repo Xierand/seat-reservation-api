@@ -9,6 +9,7 @@ use App\Http\Requests\StoreOrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Event;
 use App\Models\Order;
+use App\Services\OrderCancellationService;
 use App\Services\OrderPaymentService;
 use App\Services\OrderService;
 use App\Services\UserService;
@@ -81,6 +82,16 @@ class OrderController extends Controller
         OrderPaymentService $paymentService,
     ): OrderResource {
         $order = $paymentService->confirmPayment($paymentProviderId);
+
+        return new OrderResource($order);
+    }
+
+    public function cancel(
+        Event $event,
+        Order $order,
+        OrderCancellationService $cancellationService,
+    ): OrderResource {
+        $order = $cancellationService->cancel($order);
 
         return new OrderResource($order);
     }
