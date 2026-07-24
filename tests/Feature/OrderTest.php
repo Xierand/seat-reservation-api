@@ -11,6 +11,7 @@ use App\Models\Reservation;
 use App\Models\Seat;
 use App\Models\Sector;
 use App\Services\UserService;
+use Illuminate\Support\Collection;
 
 function createPublishedEvent(array $attributes = []): Event
 {
@@ -43,7 +44,7 @@ function createSeatedSeatSetup(float $basePrice = 100.00): array
 }
 
 /**
- * @return array{0: Event, 1: Sector, 2: \Illuminate\Support\Collection<int, Seat>}
+ * @return array{0: Event, 1: Sector, 2: Collection<int, Seat>}
  */
 function createStandingSeatsSetup(int $count, float $basePrice = 50.00): array
 {
@@ -303,4 +304,152 @@ test('it rolls back order when any seat in the cart is unavailable', function ()
     expect(Order::query()->count())->toBe(0);
     expect(Reservation::query()->count())->toBe(0);
     expect($availableSeat->fresh()->status)->toBe(SeatStatus::FREE);
+});
+
+test('it creates an order for mixed sector using seat_ids', function () {
+    $event = createPublishedEvent();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::MIXED,
+    ]);
+    $seat = Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => 'A',
+        'number' => '1',
+        'base_price' => 120,
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/orders", [
+        'user_id' => 'user-a',
+        'items' => [
+            [
+                'sector_id' => $sector->id,
+                'seat_ids' => [$seat->id],
+            ],
+        ],
+    ])->assertCreated()
+        ->assertJsonPath('data.total_amount', '120.00')
+        ->assertJsonCount(1, 'data.reservations');
+
+    expect($seat->fresh()->status)->toBe(SeatStatus::LOCKED);
+});
+
+test('it creates an order for mixed sector using standing quantity', function () {
+    $event = createPublishedEvent();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::MIXED,
+    ]);
+    Seat::factory()->count(2)->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => null,
+        'number' => null,
+        'base_price' => 40,
+    ]);
+    Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => 'A',
+        'number' => '1',
+        'base_price' => 100,
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/orders", [
+        'user_id' => 'user-a',
+        'items' => [
+            [
+                'sector_id' => $sector->id,
+                'quantity' => 2,
+            ],
+        ],
+    ])->assertCreated()
+        ->assertJsonPath('data.total_amount', '80.00')
+        ->assertJsonCount(2, 'data.reservations');
+
+    expect(Seat::query()->whereNull('row')->whereNull('number')->where('status', SeatStatus::LOCKED)->count())->toBe(2);
+    expect(Seat::query()->where('row', 'A')->where('number', '1')->value('status'))->toBe(SeatStatus::FREE);
+});
+
+test('it creates an order with seated and standing items in the same mixed sector', function () {
+    $event = createPublishedEvent();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::MIXED,
+    ]);
+    $labeledSeat = Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => 'B',
+        'number' => '2',
+        'base_price' => 90,
+    ]);
+    Seat::factory()->count(2)->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => null,
+        'number' => null,
+        'base_price' => 30,
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/orders", [
+        'user_id' => 'user-a',
+        'items' => [
+            [
+                'sector_id' => $sector->id,
+                'seat_ids' => [$labeledSeat->id],
+            ],
+            [
+                'sector_id' => $sector->id,
+                'quantity' => 2,
+            ],
+        ],
+    ])->assertCreated()
+        ->assertJsonPath('data.total_amount', '150.00')
+        ->assertJsonCount(3, 'data.reservations');
+});
+
+test('it rejects mixed sector items that provide both seat_ids and quantity', function () {
+    $event = createPublishedEvent();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::MIXED,
+    ]);
+    $seat = Seat::factory()->create([
+        'event_id' => $event->id,
+        'sector_id' => $sector->id,
+        'row' => 'A',
+        'number' => '1',
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/orders", [
+        'user_id' => 'user-a',
+        'items' => [
+            [
+                'sector_id' => $sector->id,
+                'seat_ids' => [$seat->id],
+                'quantity' => 1,
+            ],
+        ],
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors(['items.0']);
+});
+
+test('it rejects mixed sector items that provide neither seat_ids nor quantity', function () {
+    $event = createPublishedEvent();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::MIXED,
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/orders", [
+        'user_id' => 'user-a',
+        'items' => [
+            [
+                'sector_id' => $sector->id,
+            ],
+        ],
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors(['items.0']);
 });
