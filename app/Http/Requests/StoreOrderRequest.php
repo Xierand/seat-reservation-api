@@ -70,34 +70,52 @@ class StoreOrderRequest extends FormRequest
                 $hasSeatIds = ! empty($item['seat_ids']);
                 $hasQuantity = isset($item['quantity']);
 
-                if (in_array($sector->type, [SectorType::SEATED, SectorType::MIXED], true)) {
+                if ($sector->type === SectorType::SEATED) {
                     if (! $hasSeatIds) {
                         $validator->errors()->add(
                             "items.$index.seat_ids",
-                            'Seat IDs are required for seated and mixed sectors.',
+                            'Seat IDs are required for seated sectors.',
                         );
                     }
 
                     if ($hasQuantity) {
                         $validator->errors()->add(
                             "items.$index.quantity",
-                            'Quantity is not allowed for seated and mixed sectors.',
+                            'Quantity is not allowed for seated sectors.',
                         );
                     }
 
                     if ($hasSeatIds) {
-                        $validSeatCount = Seat::query()
-                            ->where('event_id', $event->id)
-                            ->where('sector_id', $sector->id)
-                            ->whereIn('id', $item['seat_ids'])
-                            ->count();
+                        $this->assertSeatsBelongToSector(
+                            $validator,
+                            $event->id,
+                            $sector->id,
+                            $item['seat_ids'],
+                            $index,
+                        );
+                    }
 
-                        if ($validSeatCount !== count($item['seat_ids'])) {
-                            $validator->errors()->add(
-                                "items.$index.seat_ids",
-                                'One or more seat IDs do not belong to the specified sector.',
-                            );
-                        }
+                    continue;
+                }
+
+                if ($sector->type === SectorType::MIXED) {
+                    if ($hasSeatIds === $hasQuantity) {
+                        $validator->errors()->add(
+                            "items.$index",
+                            'Mixed sectors require either seat_ids or quantity, but not both.',
+                        );
+
+                        continue;
+                    }
+
+                    if ($hasSeatIds) {
+                        $this->assertSeatsBelongToSector(
+                            $validator,
+                            $event->id,
+                            $sector->id,
+                            $item['seat_ids'],
+                            $index,
+                        );
                     }
 
                     continue;
@@ -120,6 +138,27 @@ class StoreOrderRequest extends FormRequest
                 }
             }
         });
+    }
+
+    private function assertSeatsBelongToSector(
+        Validator $validator,
+        int $eventId,
+        int $sectorId,
+        array $seatIds,
+        int $index,
+    ): void {
+        $validSeatCount = Seat::query()
+            ->where('event_id', $eventId)
+            ->where('sector_id', $sectorId)
+            ->whereIn('id', $seatIds)
+            ->count();
+
+        if ($validSeatCount !== count($seatIds)) {
+            $validator->errors()->add(
+                "items.$index.seat_ids",
+                'One or more seat IDs do not belong to the specified sector.',
+            );
+        }
     }
 
     public function toDto(): StoreOrderData

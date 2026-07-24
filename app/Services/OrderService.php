@@ -58,7 +58,7 @@ class OrderService
 
     private function lockSeatsForItems(Event $event, StoreOrderData $dto): Collection
     {
-        $seats = new Collection();
+        $seats = new Collection;
 
         foreach ($dto->items as $item) {
             $seats = $seats->merge(
@@ -81,7 +81,7 @@ class OrderService
             ->get();
 
         if ($seats->count() !== count($seatIds)) {
-            throw new SeatsNotAvailableException();
+            throw new SeatsNotAvailableException;
         }
 
         return $seats;
@@ -91,12 +91,14 @@ class OrderService
     {
         $seats = $this->seatQuery($event, $item->sectorId)
             ->where('status', SeatStatus::FREE)
+            ->whereNull('row')
+            ->whereNull('number')
             ->lock('for update skip locked')
             ->limit($item->quantity)
             ->get();
 
         if ($seats->count() !== $item->quantity) {
-            throw new SeatsNotAvailableException();
+            throw new SeatsNotAvailableException;
         }
 
         return $seats;
@@ -114,7 +116,7 @@ class OrderService
     {
         foreach ($seats as $seat) {
             if ($seat->status !== SeatStatus::FREE) {
-                throw new SeatsNotAvailableException();
+                throw new SeatsNotAvailableException;
             }
         }
     }
