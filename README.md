@@ -1,58 +1,234 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Seat Reservation API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+![PHP](https://img.shields.io/badge/PHP-8.4+-777BB4?style=flat&logo=php&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?style=flat&logo=laravel&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=flat&logo=mysql&logoColor=white)
+![Pest](https://img.shields.io/badge/Pest-4-FFDD57?style=flat&logo=php&logoColor=black)
 
-## About Laravel
+Microservice for event seats and orders. It does **not** handle user login - that's the API Gateway's job. Traffic here is internal only, authenticated with `X-Internal-Api-Key`.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+We also don't own the cart. Frontend / Gateway collects selected seats, then hits us with `POST orders`, and only then do we lock seats in the database.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## What this service does
 
-## Learning Laravel
+- Events, sectors, seats (CRUD)
+- Bulk seat generation (standing / seated grid / mixed)
+- Orders: reserve -> pay -> tickets, or expire / cancel
+- Limit of 6 tickets per user per event
+- CRON that expires `pending` orders after `valid_until` (15 minutes by default)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### Sector types
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Type | How you order |
+|------|----------------|
+| `seated` | specific `seat_ids` |
+| `standing` | `quantity` - we pick free seats with no row/number |
+| `mixed` | in one sector: either `seat_ids` or `quantity` (you can use both as separate items) |
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+### Order lifecycle
 
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```
+pending  ->  paid       (payment webhook)
+pending  ->  expired    (CRON after valid_until)
+pending  ->  cancelled  (cart / checkout cancelled)
+paid     ->  cancelled  (refund)
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+On reserve, seats go `free -> locked`.  
+On payment: `locked -> sold` + a `ticket_number` (UUID) per reservation.  
+On expire / cancel: seats go back to `free`. Reservations stay in the DB as history.
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Local setup
 
-## Code of Conduct
+1. Dependencies:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-## Security Vulnerabilities
+2. In `.env`, set the database and internal key:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=seat_reservation_api
+DB_USERNAME=root
+DB_PASSWORD=
 
-## License
+INTERNAL_API_KEY=generate-a-long-secret
+ALLOWED_IPS=
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Leave `ALLOWED_IPS` empty locally (disabled). In production you can put the Gateway IPs, comma-separated.
+
+Generate a secret like this:
+
+```bash
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+```
+
+3. Migrate and run:
+
+```bash
+php artisan migrate
+php artisan serve
+```
+
+API base: `http://127.0.0.1:8000/api/v1/...`
+
+### Scheduler (order expiry)
+
+In a second terminal:
+
+```bash
+php artisan schedule:work
+```
+
+Or manually:
+
+```bash
+php artisan orders:expire
+```
+
+Without this, `pending` orders won't release seats on their own after 15 minutes.
+
+---
+
+## Auth (internal)
+
+Every `/api/...` request needs:
+
+```http
+X-Internal-Api-Key: <INTERNAL_API_KEY from .env>
+Accept: application/json
+```
+
+Missing / wrong key -> `401`.
+
+---
+
+## Order flow (happy path)
+
+1. Gateway calls `POST /api/v1/events/{event}/orders` -> `pending`, seats `locked`
+2. Gateway starts payment with the provider and attaches the ID:
+   `PATCH /api/v1/events/{event}/orders/{order}/payment-provider`
+3. After successful payment, webhook:
+   `POST /api/v1/orders/{paymentProviderId}/confirm-payment`  
+   -> `paid`, seats `sold`, ticket UUIDs
+
+Cancel (pending, or paid refund):
+
+```http
+POST /api/v1/events/{event}/orders/{order}/cancel
+```
+
+---
+
+## Endpoints (`/api/v1`)
+
+### Events / sectors / seats
+
+| Method | Path |
+|--------|------|
+| CRUD | `/events` |
+| CRUD | `/events/{event}/sectors` |
+| CRUD | `/events/{event}/sectors/{sector}/seats` |
+| POST | `/events/{event}/sectors/{sector}/seats/generate` |
+
+Seat generation is a separate endpoint; manual seat CRUD stays as-is.
+
+Standing / mixed (pool with no row):
+
+```json
+{ "capacity": 100, "base_price": 50 }
+```
+
+Seated / mixed (grid):
+
+```json
+{
+  "base_price": 100,
+  "row": { "prefix": "ALPHABET", "count": 10 },
+  "number": { "suffix": "NUMBER", "count": 20 }
+}
+```
+
+`prefix` / `suffix`: `ALPHABET` | `NUMBER` | `ROMAN` (or `null`).  
+Label = prefix + optional `name` + suffix.
+
+### Orders
+
+| Method | Path | What it does |
+|--------|------|----------------|
+| GET | `/events/{event}/orders?user_id=` | list orders for a user (`user_id` required) |
+| POST | `/events/{event}/orders` | create reservation |
+| GET | `/events/{event}/orders/{order}` | details + reservations |
+| PATCH | `/events/{event}/orders/{order}/payment-provider` | attach payment provider ID |
+| POST | `/events/{event}/orders/{order}/cancel` | cancel / refund |
+| POST | `/orders/{paymentProviderId}/confirm-payment` | confirm payment |
+| GET | `/events/{event}/users/{userId}/limit` | how many seats the user can still take |
+
+Example order (seated + standing in one request):
+
+```json
+{
+  "user_id": "user-from-gateway",
+  "items": [
+    { "sector_id": 1, "seat_ids": [10, 11] },
+    { "sector_id": 2, "quantity": 2 }
+  ]
+}
+```
+
+For mixed: either `seat_ids` or `quantity` in a single item - not both. Two items on the same mixed sector (a seat + standing) is fine.
+
+---
+
+## Tests
+
+Create the test DB first (default name/port come from `phpunit.xml`):
+
+```bash
+php scripts/create-test-database.php
+```
+
+Then:
+
+```bash
+php artisan test
+```
+
+Concurrency tests for `SKIP LOCKED` (needs a second MySQL connection):
+
+```bash
+php artisan test --testsuite=Concurrency
+```
+
+Formatting:
+
+```bash
+./vendor/bin/pint
+```
+
+---
+
+## Docker
+
+No `Dockerfile` / `docker-compose` yet - run PHP + MySQL locally as above. When compose lands, it'll be documented here.
+
+---
+
+## Useful files
+
+| File | Why |
+|------|-----|
+| `examples/api-gateway/SeatReservationClient.php` | sketch of a Gateway client |
+| `routes/api.php` | all endpoints |
+| `routes/console.php` | scheduler (`orders:expire` every minute) |
