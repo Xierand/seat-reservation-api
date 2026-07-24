@@ -20,6 +20,7 @@ test('it generates standing seats by capacity', function () {
 
     expect(Seat::query()->where('sector_id', $sector->id)->count())->toBe(3);
     expect(Seat::query()->where('sector_id', $sector->id)->whereNull('row')->whereNull('number')->count())->toBe(3);
+    expect(Seat::query()->where('sector_id', $sector->id)->where('event_id', $sector->event_id)->count())->toBe(3);
 });
 
 test('it generates a seated grid with alphabet rows and number seats', function () {
@@ -51,6 +52,7 @@ test('it generates a seated grid with alphabet rows and number seats', function 
         'sector_id' => $sector->id,
         'row' => 'B',
         'number' => '3',
+        'event_id' => $sector->event_id,
     ]);
 });
 

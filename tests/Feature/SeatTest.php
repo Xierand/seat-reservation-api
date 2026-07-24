@@ -7,6 +7,42 @@ use App\Models\Reservation;
 use App\Models\Seat;
 use App\Models\Sector;
 
+test('it creates a seat with event_id matching the sector', function () {
+    $event = Event::factory()->create();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::SEATED,
+    ]);
+
+    $this->postJson("/api/v1/events/{$event->id}/sectors/{$sector->id}/seats", [
+        'row' => 'A',
+        'number' => '1',
+        'base_price' => 100,
+    ])->assertCreated()
+        ->assertJsonPath('data.event_id', $sector->event_id);
+
+    $this->assertDatabaseHas('seats', [
+        'sector_id' => $sector->id,
+        'event_id' => $sector->event_id,
+        'row' => 'A',
+        'number' => '1',
+    ]);
+});
+
+test('seat factory derives event_id from the sector', function () {
+    $event = Event::factory()->create();
+    $sector = Sector::factory()->create([
+        'event_id' => $event->id,
+        'type' => SectorType::STANDING,
+    ]);
+
+    $seat = Seat::factory()->standing()->create([
+        'sector_id' => $sector->id,
+    ]);
+
+    expect($seat->event_id)->toBe($sector->event_id);
+});
+
 test('it rejects duplicate row and number within the same sector', function () {
     $event = Event::factory()->create();
     $sector = Sector::factory()->create([
